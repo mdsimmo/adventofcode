@@ -1,5 +1,5 @@
 package main
 
 func main() {
-	aoc_10_run()
+	aoc_11_run()
 }
