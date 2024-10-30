@@ -1,0 +1,67 @@
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"slices"
+	"strconv"
+)
+
+type Scan struct {
+	done []int
+	toscan []int
+}
+
+func aoc_17_run() {
+	file, err := os.Open("aoc_17_in.txt")
+	if err != nil {
+		panic(err)
+	}
+	containers := []int {}
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		volume, err := strconv.Atoi(line)
+		if err != nil {
+			panic(err)
+		}
+		containers = append(containers, volume)
+	}
+	
+	queue := []Scan { Scan {
+		done: []int {},
+		toscan: containers,
+	}}
+	combos := 0
+	for len(queue) > 0 {
+		scan := queue[len(queue)-1]
+		queue = queue[:len(queue)-1]
+		
+		sum := 0
+		for i := 0; i < len(scan.done); i++ {
+			sum += scan.done[i]
+		}
+		if sum == 150 {
+			combos++
+		} else if sum > 150 {
+			// remove from list
+		} else {
+			if len(scan.toscan) > 0 {
+				for i := 0; i < len(scan.toscan); i++ {
+					doneNew := slices.Clone(scan.done)
+					toscanNew := slices.Clone(scan.toscan)
+					doneNew = append(doneNew, toscanNew[len(toscanNew)-1])
+					toscanNew = toscanNew[:len(toscanNew)-1]
+					queue = append(queue, Scan {
+						done: doneNew,
+						toscan: toscanNew,
+					})
+				}
+			} else {
+				panic("Should never happen?")
+			}
+		}
+	}
+	fmt.Printf("Combos: %n\n", combos)
+}
