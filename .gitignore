@@ -2,3 +2,8 @@
 aoc
 **/test.txt
 **/text.txt
+
+# ocaml build files
+**/*.cmi
+**/*.cmx
+**/*.o
