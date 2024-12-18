@@ -44,14 +44,23 @@ func main() {
 			// When adding points, optimise by checking if any
 			// of the new points have blocked the previous path.
 			// If not, just keep adding points until we do block.
+			// Note: doing this means the path finder needs to rembemer
+			// the route it took. The cost of that is greater than the
+			// saving made in searching. But, its cute, so I left it in.
 			allOk := true
 			for j := iPre; j < i || allOk; j++ {
+				if j >= i {
+					fmt.Printf("Triggered\n")
+				}
 				p := points[j]
 				grid[p] = true
 				if _, blocked := bestPath[p]; blocked {
 					allOk = false
 				}
 				i = Max(i, j+1)
+				if allOk {
+					iMin = j
+				}
 			}
 		} else {
 			panic("Should not happen")
