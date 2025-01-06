@@ -9,9 +9,14 @@ import (
 	"strings"
 )
 
+type Cache struct {
+	pads int
+	path string
+}
+
 func main() {
 	file, err := os.Open("in.txt")
-	keypads := 2
+	keypads := 25
 	if err != nil {
 		panic(err)
 	}
@@ -44,118 +49,103 @@ func main() {
 		{0, -1}: '^',
 	}
 
+	cache := map[Cache]int{}
 	sum := 0
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
+		// Find possible paths to write number
 		code := []rune(scanner.Text())
 		fmt.Printf("Code: %s\n", string(code))
-		paths := make([]map[string]bool, keypads+1)
-
+		paths := make([]map[string]bool, len(code))
 		for i := 0; i < len(code); i++ {
 			start := 'A'
 			if i > 0 {
 				start = code[i-1]
 			}
 			end := code[i]
-			charPaths := findPaths(numberKeypad, dirLookup, start, end)
-			// fmt.Printf("  CP [%c -> %c]: %+v\n", start, end, charPaths)
-			newPaths := map[string]bool{}
-			if len(paths[0]) == 0 {
-				newPaths = charPaths
-			} else if len(charPaths) == 0 {
-				newPaths = paths[0]
-			} else {
-				for cp := range charPaths {
-					for op := range paths[0] {
-						newPaths[op+cp] = true
-					}
-				}
-			}
-			// append press "A" after each move
-			newPaths2 := make(map[string]bool)
-			for p := range newPaths {
-				newPaths2[p+"A"] = true
-			}
-			paths[0] = newPaths2
-			// fmt.Printf("   [0] Paths: %v\n", paths[0])
+			charPaths := keypadPath(numberKeypad, dirLookup, start, end)
+			paths[i] = charPaths
 		}
-		fmt.Printf("[0] Paths: %v\n", paths[0])
+		// fmt.Printf("Paths: %v\n", paths)
 
-		for pad := 1; pad <= keypads; pad++ {
-			paths[pad] = map[string]bool{}
-			for path := range paths[pad-1] {
-				possiblePaths := map[string]bool{}
-				// fmt.Printf("[%d] Finding paths for: %s\n", pad, path)
-				for i := 0; i < len(path); i++ {
-					start := 'A'
-					if i > 0 {
-						start = rune(path[i-1])
-					}
-					end := rune(path[i])
-					charPaths := findPaths(directionKeypad, dirLookup, start, end)
-					// fmt.Printf("  CP [%c -> %c]: %+v\n", start, end, charPaths)
-					newPaths := map[string]bool{}
-					if len(possiblePaths) == 0 {
-						newPaths = charPaths
-					} else if len(charPaths) == 0 {
-						newPaths = possiblePaths
-					} else {
-						for cp := range charPaths {
-							for op := range possiblePaths {
-								newPaths[op+cp] = true
-							}
-						}
-					}
-					// press A
-					newPaths2 := make(map[string]bool)
-					for p := range newPaths {
-						newPaths2[p+"A"] = true
-					}
-					possiblePaths = newPaths2
-					// fmt.Printf("   [%dA] Paths: %v\n", pad, possiblePaths)
-				}
-				// fmt.Printf("[%d] Paths for %s: %v\n", pad, path, possiblePaths)
-				for k, v := range possiblePaths {
-					paths[pad][k] = v
-				}
-			}
-
-			// keep only shortest of each path
-			// fmt.Printf("[%d] Paths: %v\n", pad, paths[pad])
+		// Find shortest controlling path
+		lengthSum := 0
+		for _, options := range paths {
 			shortest := math.MaxInt
-			for k := range paths[pad] {
-				if len(k) < shortest {
-					shortest = len(k)
+			for option := range options {
+				length := recursivePath(directionKeypad, dirLookup, option, keypads, cache)
+				if length < shortest {
+					shortest = length
 				}
 			}
-			for k := range paths[pad] {
-				if len(k) > shortest {
-					delete(paths[pad], k)
-				}
-			}
-			fmt.Printf("[%d] Paths: (%d) %v\n", pad, shortest, paths[pad])
+			lengthSum += shortest
 		}
 
-		shortest := math.MaxInt
-		for k := range paths[keypads] {
-			if len(k) < shortest {
-				shortest = len(k)
-			}
-		}
+		// Complexity score
 		numPart, err := strconv.Atoi(strings.FieldsFunc(string(code), func(r rune) bool {
 			return r < '0' || r > '9'
 		})[0])
 		if err != nil {
 			panic(err)
 		}
-		complexity := shortest * numPart
-		fmt.Printf("Complexity: %d*%d=%d\n", shortest, numPart, complexity)
+		complexity := lengthSum * numPart
+		fmt.Printf("Complexity: %d*%d=%d\n", lengthSum, numPart, complexity)
 		sum += complexity
 	}
 	fmt.Printf("Sum: %d\n", sum)
 }
 
-func findPaths(keypad map[rune]Point, dirLookup map[Point]rune, start rune, end rune) map[string]bool {
+// Gets the shortest path to control the given path using the set number of keyboards
+func recursivePath(keypad map[rune]Point, dirLookup map[Point]rune, path string, keypads int, cache map[Cache]int) int {
+	// fmt.Printf("%s Inspect %s\n", indent(keypads), path)
+	// No more keypad indirections, directly type the path
+	if keypads == 0 {
+		// fmt.Printf("%s  Length: %d\n", indent(keypads), len(path))
+		return len(path)
+	}
+
+	// Cache results (very much needed for performance)
+	cacheResult, cached := cache[Cache{path: path, pads: keypads}]
+	if cached {
+		// fmt.Printf("%s  Length: %d (Cahced)\n", indent(keypads), cacheResult)
+		return cacheResult
+	}
+
+	// Recusively calculate how many buttons are required
+	sum := 0
+	for i, r := range path {
+		start := 'A'
+		if i != 0 {
+			start = rune(path[i-1])
+		}
+		end := r
+
+		options := keypadPath(keypad, dirLookup, start, end)
+		// fmt.Printf("%s   Paths %c -> %c: %+v\n", indent(keypads), start, end, options)
+
+		shortest := math.MaxInt
+		for option := range options {
+			length := recursivePath(keypad, dirLookup, option, keypads-1, cache)
+			if length < shortest {
+				shortest = length
+			}
+		}
+		// fmt.Printf("%s   Shortest: %d\n", indent(keypads), shortest)
+		sum += shortest
+	}
+	// fmt.Printf("%s  Length: %d\n", indent(keypads), sum)
+	cache[Cache{pads: keypads, path: path}] = sum
+	return sum
+}
+
+// For debug: indents start of log statements
+func indent(n int) string {
+	return fmt.Sprintf("[%"+strconv.Itoa(25-n)+"d]", n)
+}
+
+// Keys the direction instructions needed to type the two digits
+// Returns all shortest paths
+func keypadPath(keypad map[rune]Point, dirLookup map[Point]rune, start rune, end rune) map[string]bool {
 
 	type Entry struct {
 		pos  Point
@@ -199,7 +189,9 @@ func findPaths(keypad map[rune]Point, dirLookup map[Point]rune, start rune, end 
 	}
 	paths := make(map[string]bool)
 	for _, e := range possiblePaths {
-		paths[e.path] = true
+		// Add A to end of all paths
+		paths[e.path+"A"] = true
+
 		if e.pos != endPoint {
 			panic("Found path that did not finish")
 		}
